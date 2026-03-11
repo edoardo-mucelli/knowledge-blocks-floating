@@ -15,6 +15,7 @@ interface FloatingObjectProps {
   opacity?: number;
   anchorX?: number;
   anchorY?: number;
+  isBatchHovered?: boolean;
 }
 
 export const FloatingObject: React.FC<FloatingObjectProps> = ({ 
@@ -25,20 +26,38 @@ export const FloatingObject: React.FC<FloatingObjectProps> = ({
   rotationIntensity = 5,
   opacity = 1,
   anchorX = 0,
-  anchorY = 0
+  anchorY = 0,
+  isBatchHovered = false
 }) => {
   const [offset, setOffset] = useState<Position>({ x: 0, y: 0 });
   const [rotation, setRotation] = useState(0);
   
   const timeRef = useRef(Math.random() * 100);
+  const boostRef = useRef(1);
   const requestRef = useRef<number | undefined>(undefined);
+  const isBatchHoveredRef = useRef(isBatchHovered);
+
+  // Sync ref with prop
+  useEffect(() => {
+    isBatchHoveredRef.current = isBatchHovered;
+  }, [isBatchHovered]);
 
   const update = () => {
-    timeRef.current += 0.01 * speed;
+    // Target boost 2.5x for clear visibility when hovered with nervous jitter
+    const targetBoost = isBatchHoveredRef.current ? 2.5 : 1.0;
+    // Faster ramp up (0.1), much slower decay (0.008) for "lingering" feel
+    const lerpFactor = isBatchHoveredRef.current ? 0.1 : 0.008; 
+    
+    boostRef.current += (targetBoost - boostRef.current) * lerpFactor;
+    
+    timeRef.current += (0.01 * speed) * boostRef.current;
 
-    const dx = Math.sin(timeRef.current) * floatIntensity;
-    const dy = Math.cos(timeRef.current * 0.8) * (floatIntensity * 0.7);
-    const dr = Math.sin(timeRef.current * 0.5) * rotationIntensity;
+    // High frequency component that kicks in with boost
+    const jitter = Math.sin(timeRef.current * 15) * (boostRef.current - 1) * 2;
+    
+    const dx = (Math.sin(timeRef.current) * (floatIntensity * boostRef.current)) + jitter;
+    const dy = (Math.cos(timeRef.current * 0.8) * (floatIntensity * 0.7 * boostRef.current)) + jitter * 0.5;
+    const dr = (Math.sin(timeRef.current * 0.5) * (rotationIntensity * boostRef.current)) + jitter;
 
     setOffset({ x: dx, y: dy });
     setRotation(dr);
@@ -51,7 +70,7 @@ export const FloatingObject: React.FC<FloatingObjectProps> = ({
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
-  }, [speed, floatIntensity, rotationIntensity]);
+  }, [speed, floatIntensity, rotationIntensity]); // Don't restart loop on isBatchHovered
 
   return (
     <motion.div
